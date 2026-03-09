@@ -1,0 +1,109 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>純喫茶包裝設計器（2D/3D）</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">純喫茶包裝設計器 <span class="muted">(MVP)</span></div>
+    <div class="actions">
+      <button id="btnExport" class="btn">匯出 JSON</button>
+      <label class="btn btn-secondary">
+        匯入 JSON
+        <input id="fileImport" type="file" accept="application/json" hidden />
+      </label>
+      <button id="btnClear" class="btn btn-danger">清除</button>
+    </div>
+  </header>
+
+  <main class="layout">
+    <section class="panel">
+      <h2>面板</h2>
+      <div class="field">
+        <label>選取面</label>
+        <select id="faceSelect">
+          <option value="front">Front 正面</option>
+          <option value="back">Back 背面</option>
+          <option value="left">Left 左側</option>
+          <option value="right">Right 右側</option>
+          <option value="top">Top 上蓋</option>
+          <option value="bottom">Bottom 底部</option>
+        </select>
+      </div>
+
+      <div class="field">
+        <label>上傳該面的圖片</label>
+        <input id="fileImage" type="file" accept="image/*" />
+        <div class="hint">拖曳移動｜滾輪縮放｜Shift+滾輪旋轉</div>
+      </div>
+
+      <div class="field grid2">
+        <div>
+          <label>X</label>
+          <input id="inpX" type="number" step="1" />
+        </div>
+        <div>
+          <label>Y</label>
+          <input id="inpY" type="number" step="1" />
+        </div>
+        <div>
+          <label>Scale</label>
+          <input id="inpScale" type="number" step="0.01" min="0.01" />
+        </div>
+        <div>
+          <label>Rotate (deg)</label>
+          <input id="inpRot" type="number" step="1" />
+        </div>
+      </div>
+
+      <div class="field">
+        <button id="btnCenter" class="btn btn-secondary">置中</button>
+        <button id="btnRemoveImage" class="btn btn-secondary">移除圖片</button>
+      </div>
+
+      <details class="field">
+        <summary>說明</summary>
+        <ul class="muted">
+          <li>這是盒型（簡化）模板：展開圖為十字形。</li>
+          <li>匯出 JSON 會包含圖片 dataURL；檔案可能較大。</li>
+          <li>localStorage 有容量限制，若圖片太大可能存不下。</li>
+        </ul>
+      </details>
+    </section>
+
+    <section class="stage">
+      <div class="stageHead">
+        <h2>2D 展開圖</h2>
+        <div class="muted">點選面以選取；在該面拖曳/縮放/旋轉</div>
+      </div>
+      <canvas id="netCanvas" width="900" height="600"></canvas>
+    </section>
+
+    <section class="preview">
+      <div class="stageHead">
+        <h2>3D 預覽</h2>
+        <div class="muted">拖曳旋轉視角</div>
+      </div>
+      <div class="viewport" id="viewport">
+        <div class="box" id="box">
+          <div class="face face-front" data-face="front"></div>
+          <div class="face face-back" data-face="back"></div>
+          <div class="face face-left" data-face="left"></div>
+          <div class="face face-right" data-face="right"></div>
+          <div class="face face-top" data-face="top"></div>
+          <div class="face face-bottom" data-face="bottom"></div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="footer">
+    <span class="muted">© MVP / BYOK Telegram Bot</span>
+  </footer>
+
+  <script src="app.js"></script>
+</body>
+</html>

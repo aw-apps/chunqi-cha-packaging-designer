@@ -1,4 +1,7 @@
-const STORAGE_KEY = 'byok-packaging-designer:v1';
+const STORAGE_KEY = 'byok-packaging-designer:v2';
+const LEGACY_STORAGE_KEYS = ['byok-packaging-designer:v1'];
+
+const CURRENT_STATE_VERSION = 2;
 
 const FACE_ORDER = ['front','back','left','right','top','bottom'];
 const FACE_LABEL = {front:'Front',back:'Back',left:'Left',right:'Right',top:'Top',bottom:'Bottom'};
@@ -26,6 +29,75 @@ const TEMPLATE = {
   }
 };
 
+function isPlainObject(v){
+  return v !== null && typeof v === 'object' && !Array.isArray(v);
+}
+
+function isFiniteNumber(v){
+  return typeof v === 'number' && Number.isFinite(v);
+}
+
+function toNumberOr(v, fallback){
+  const n = typeof v === 'string' && v.trim() !== '' ? Number(v) : v;
+  return isFiniteNumber(n) ? n : fallback;
+}
+
+function clamp(n, min, max){
+  return Math.max(min, Math.min(max, n));
+}
+
+function looksLikeState(v){
+  return isPlainObject(v) && (
+    isPlainObject(v.faces) || typeof v.template === 'string' || isFiniteNumber(v.version)
+  );
+}
+
+function normalizeFaceState(face, input){
+  const base = defaultFaceState(face);
+  if (!isPlainObject(input)) return base;
+
+  const { w, h } = TEMPLATE.faces[face];
+  const x = toNumberOr(input.x, base.x);
+  const y = toNumberOr(input.y, base.y);
+
+  const scale = clamp(toNumberOr(input.scale, base.scale), 0.01, 20);
+  const rotDeg = toNumberOr(input.rotDeg, base.rotDeg);
+
+  let imageDataUrl = typeof input.imageDataUrl === 'string' ? input.imageDataUrl : null;
+  if (imageDataUrl === '') imageDataUrl = null;
+  if (imageDataUrl && !imageDataUrl.startsWith('data:')) imageDataUrl = null;
+
+  return {
+    imageDataUrl,
+    x: clamp(Math.round(x), -w * 3, w * 4),
+    y: clamp(Math.round(y), -h * 3, h * 4),
+    scale,
+    rotDeg
+  };
+}
+
+function normalizeState(input){
+  const base = defaultState();
+  if (!looksLikeState(input)) return null;
+
+  const out = {
+    version: CURRENT_STATE_VERSION,
+    template: input.template === 'carton-cross' ? 'carton-cross' : base.template,
+    selectedFace: FACE_ORDER.includes(input.selectedFace) ? input.selectedFace : base.selectedFace,
+    faces: {}
+  };
+
+  for (const face of FACE_ORDER){
+    out.faces[face] = normalizeFaceState(face, input.faces?.[face]);
+  }
+
+  return out;
+}
+
+function isQuotaExceededError(e){
+  return e?.name === 'QuotaExceededError' || e?.code === 22 || e?.number === -2147024882;
+}
+
 function defaultFaceState(face){
   const { w, h } = TEMPLATE.faces[face];
   return {
@@ -41,7 +113,7 @@ function defaultState(){
   const faces = {};
   for (const f of FACE_ORDER) faces[f] = defaultFaceState(f);
   return {
-    version: 1,
+    version: CURRENT_STATE_VERSION,
     template: 'carton-cross',
     selectedFace: 'front',
     faces
@@ -81,6 +153,36 @@ for (const f of FACE_ORDER){
 
 const imageCache = new Map(); // dataUrl -> HTMLImageElement
 
+let storageNoticeEl = null;
+function setStorageNotice(message){
+  if (!storageNoticeEl){
+    storageNoticeEl = document.createElement('div');
+    storageNoticeEl.setAttribute('role', 'status');
+    storageNoticeEl.style.cssText = [
+      'display:none',
+      'margin:10px 16px 0',
+      'padding:10px 12px',
+      'border-radius:10px',
+      'background:#3a1414',
+      'border:1px solid rgba(255,80,80,0.55)',
+      'color:rgba(255,255,255,0.92)',
+      'font: 13px/1.4 ui-sans-serif, system-ui'
+    ].join(';');
+
+    const topbar = document.querySelector('.topbar');
+    topbar?.insertAdjacentElement('afterend', storageNoticeEl);
+  }
+
+  if (!message){
+    storageNoticeEl.style.display = 'none';
+    storageNoticeEl.textContent = '';
+    return;
+  }
+
+  storageNoticeEl.textContent = message;
+  storageNoticeEl.style.display = 'block';
+}
+
 function loadImage(dataUrl){
   if (!dataUrl) return Promise.resolve(null);
   if (imageCache.has(dataUrl)) return Promise.resolve(imageCache.get(dataUrl));
@@ -97,23 +199,40 @@ function saveStateDebounced(){
   saveStateDebounced._t = setTimeout(() => {
     try {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+      for (const k of LEGACY_STORAGE_KEYS) localStorage.removeItem(k);
+      setStorageNotice(null);
     } catch (e) {
       console.warn('localStorage save failed', e);
+      setStorageNotice(
+        isQuotaExceededError(e)
+          ? '自動儲存失敗：瀏覽器儲存空間（localStorage）可能已滿。請先按右上「匯出 JSON」備份，或清理網站資料後再繼續編輯。'
+          : '自動儲存失敗：無法寫入瀏覽器儲存空間。建議先「匯出 JSON」備份。'
+      );
     }
   }, 150);
 }
 
 function loadState(){
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return null;
-    const parsed = JSON.parse(raw);
-    if (!parsed || parsed.version !== 1) return null;
-    // Shallow upgrade safety
-    for (const f of FACE_ORDER){
-      if (!parsed.faces?.[f]) return null;
+    for (const key of [STORAGE_KEY, ...LEGACY_STORAGE_KEYS]){
+      const raw = localStorage.getItem(key);
+      if (!raw) continue;
+
+      let parsed;
+      try {
+        parsed = JSON.parse(raw);
+      } catch {
+        continue;
+      }
+
+      const normalized = normalizeState(parsed);
+      if (!normalized) continue;
+
+      if (key !== STORAGE_KEY || parsed?.version !== CURRENT_STATE_VERSION) loadState._migrated = true;
+      return normalized;
     }
-    return parsed;
+
+    return null;
   } catch {
     return null;
   }
@@ -193,14 +312,11 @@ fileImport.addEventListener('change', async () => {
   try {
     const txt = await f.text();
     const imported = JSON.parse(txt);
-    if (!imported || imported.version !== 1) throw new Error('版本不相容');
-    for (const face of FACE_ORDER){
-      if (!imported.faces?.[face]) throw new Error('缺少面資料');
-    }
-    state = imported;
+    const normalized = normalizeState(imported);
+    if (!normalized) throw new Error('JSON 格式不符合（缺少必要欄位）');
+
+    state = normalized;
     setSelectedFace(state.selectedFace || 'front');
-    renderAll();
-    saveStateDebounced();
   } catch (e){
     alert('匯入失敗：' + (e?.message || e));
   } finally {
@@ -509,6 +625,7 @@ syncControlsFromState();
 
 // Render
 renderAll();
+if (loadState._migrated) saveStateDebounced();
 
 // Keep 2D net crisp on resize
 window.addEventListener('resize', () => drawNet());

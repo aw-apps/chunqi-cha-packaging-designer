@@ -85,6 +85,32 @@ select, input[type=number], input[type=file]{
   background: rgba(7,10,22,.55);
 }
 
+.stage{ position: relative; }
+.canvasTools{
+  position:absolute;
+  top:12px;
+  right:12px;
+  display:flex;
+  gap:10px;
+  z-index:1;
+}
+.toggle{
+  display:inline-flex;
+  align-items:center;
+  gap:8px;
+  padding:6px 10px;
+  border-radius:999px;
+  border:1px solid var(--border);
+  background: rgba(15,23,48,.65);
+  color:rgba(255,255,255,0.92);
+  font: 12px/1.0 ui-sans-serif, system-ui;
+  user-select:none;
+}
+.toggle input{
+  margin:0;
+  accent-color: var(--accent);
+}
+
 /* 3D */
 .viewport{
   width:100%;

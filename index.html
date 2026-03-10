@@ -88,6 +88,15 @@
         <h2>3D 預覽</h2>
         <div class="muted">拖曳旋轉視角</div>
       </div>
+
+      <div class="previewTools" aria-label="3D controls">
+        <label class="rangeRow" for="depthRange">
+          <span class="muted">Depth</span>
+          <input id="depthRange" type="range" min="0.4" max="2" step="0.05" />
+          <span id="depthValue" class="muted mono"></span>
+        </label>
+      </div>
+
       <div class="viewport" id="viewport">
         <div class="box" id="box">
           <div class="face face-front" data-face="front"></div>

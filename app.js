@@ -46,6 +46,10 @@ function clamp(n, min, max){
   return Math.max(min, Math.min(max, n));
 }
 
+function round(n){
+  return Math.round(n);
+}
+
 function looksLikeState(v){
   return isPlainObject(v) && (
     isPlainObject(v.faces) || typeof v.template === 'string' || isFiniteNumber(v.version)
@@ -112,15 +116,21 @@ function defaultFaceState(face){
 
 function defaultUiState(){
   return {
-    showGuides: true
+    showGuides: true,
+    // Multiplier applied to TEMPLATE depth (left.w / top.h) for 3D preview thickness
+    depthScale: 1
   };
 }
 
 function normalizeUiState(input){
   const base = defaultUiState();
   if (!isPlainObject(input)) return base;
+
+  const depthScale = clamp(toNumberOr(input.depthScale, base.depthScale), 0.4, 2);
+
   return {
-    showGuides: input.showGuides === false ? false : true
+    showGuides: input.showGuides === false ? false : true,
+    depthScale
   };
 }
 
@@ -155,11 +165,35 @@ const btnClear = document.getElementById('btnClear');
 
 const viewport = document.getElementById('viewport');
 const boxEl = document.getElementById('box');
+const depthRange = document.getElementById('depthRange');
+const depthValue = document.getElementById('depthValue');
 
 let chkGuides = null;
 
+function getBoxDims(){
+  const w = TEMPLATE.faces.front.w;
+  const h = TEMPLATE.faces.front.h;
+  const baseD = TEMPLATE.faces.left.w;
+  const depthScale = clamp(toNumberOr(state.ui?.depthScale, 1), 0.4, 2);
+  const d = round(baseD * depthScale);
+  return { w, h, d, baseD, depthScale };
+}
+
+function apply3DBoxDims(){
+  const { w, h, d } = getBoxDims();
+  boxEl.style.setProperty('--w', `${w}px`);
+  boxEl.style.setProperty('--h', `${h}px`);
+  boxEl.style.setProperty('--d', `${d}px`);
+}
+
 function syncUiControlsFromState(){
   if (chkGuides) chkGuides.checked = state.ui?.showGuides !== false;
+
+  if (depthRange){
+    const { d, depthScale } = getBoxDims();
+    depthRange.value = String(depthScale);
+    if (depthValue) depthValue.textContent = `${d}px`;
+  }
 }
 
 function ensureCanvasTools(){
@@ -183,6 +217,16 @@ function ensureCanvasTools(){
   chkGuides.addEventListener('change', () => {
     state.ui.showGuides = chkGuides.checked;
     drawNet();
+    saveStateDebounced();
+  });
+}
+
+
+if (depthRange){
+  depthRange.addEventListener('input', () => {
+    state.ui.depthScale = clamp(Number(depthRange.value), 0.4, 2);
+    syncUiControlsFromState();
+    apply3DBoxDims();
     saveStateDebounced();
   });
 }
@@ -657,6 +701,7 @@ function applyTexturesTo3D(){
 }
 
 async function renderAll(){
+  apply3DBoxDims();
   await renderAllTextures();
   applyTexturesTo3D();
   drawNet();
@@ -812,6 +857,7 @@ viewport.addEventListener('pointerup', () => {
 // Initial UI sync
 faceSelect.value = state.selectedFace;
 ensureCanvasTools();
+apply3DBoxDims();
 syncControlsFromState();
 syncUiControlsFromState();
 

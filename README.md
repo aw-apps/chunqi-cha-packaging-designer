@@ -8,6 +8,8 @@
 - 右側 3D 即時預覽（CSS 3D 折盒）
 - 自動儲存到 localStorage
 - 匯出/匯入設計（JSON，含圖片 dataURL）
+- 匯入容錯：舊版/缺欄位 JSON 會自動補齊預設值
+- 儲存提示：localStorage 容量不足時會提示改用匯出 JSON
 
 ## 操作
 - 點選展開圖中的面：選取

@@ -84,6 +84,7 @@ function normalizeState(input){
     version: CURRENT_STATE_VERSION,
     template: input.template === 'carton-cross' ? 'carton-cross' : base.template,
     selectedFace: FACE_ORDER.includes(input.selectedFace) ? input.selectedFace : base.selectedFace,
+    ui: normalizeUiState(input.ui),
     faces: {}
   };
 
@@ -109,6 +110,20 @@ function defaultFaceState(face){
   };
 }
 
+function defaultUiState(){
+  return {
+    showGuides: true
+  };
+}
+
+function normalizeUiState(input){
+  const base = defaultUiState();
+  if (!isPlainObject(input)) return base;
+  return {
+    showGuides: input.showGuides === false ? false : true
+  };
+}
+
 function defaultState(){
   const faces = {};
   for (const f of FACE_ORDER) faces[f] = defaultFaceState(f);
@@ -116,6 +131,7 @@ function defaultState(){
     version: CURRENT_STATE_VERSION,
     template: 'carton-cross',
     selectedFace: 'front',
+    ui: defaultUiState(),
     faces
   };
 }
@@ -139,6 +155,37 @@ const btnClear = document.getElementById('btnClear');
 
 const viewport = document.getElementById('viewport');
 const boxEl = document.getElementById('box');
+
+let chkGuides = null;
+
+function syncUiControlsFromState(){
+  if (chkGuides) chkGuides.checked = state.ui?.showGuides !== false;
+}
+
+function ensureCanvasTools(){
+  const stageEl = document.querySelector('.stage');
+  if (!stageEl) return;
+  if (stageEl.querySelector('.canvasTools')) return;
+
+  const toolsEl = document.createElement('div');
+  toolsEl.className = 'canvasTools';
+  toolsEl.innerHTML = `
+    <label class="toggle" title="Guides (G)">
+      <input type="checkbox" />
+      Guides
+    </label>
+  `;
+  stageEl.appendChild(toolsEl);
+
+  chkGuides = toolsEl.querySelector('input[type=checkbox]');
+  syncUiControlsFromState();
+
+  chkGuides.addEventListener('change', () => {
+    state.ui.showGuides = chkGuides.checked;
+    drawNet();
+    saveStateDebounced();
+  });
+}
 
 // Pre-create per-face render canvases for textures
 const faceCanvases = {};
@@ -242,6 +289,7 @@ function setSelectedFace(face){
   state.selectedFace = face;
   faceSelect.value = face;
   syncControlsFromState();
+  syncUiControlsFromState();
   renderAll();
   saveStateDebounced();
 }
@@ -316,6 +364,7 @@ fileImport.addEventListener('change', async () => {
     if (!normalized) throw new Error('JSON 格式不符合（缺少必要欄位）');
 
     state = normalized;
+    syncUiControlsFromState();
     setSelectedFace(state.selectedFace || 'front');
   } catch (e){
     alert('匯入失敗：' + (e?.message || e));
@@ -327,6 +376,7 @@ fileImport.addEventListener('change', async () => {
 btnClear.addEventListener('click', () => {
   if (!confirm('確定要清除目前設計？')) return;
   state = defaultState();
+  syncUiControlsFromState();
   setSelectedFace('front');
   renderAll();
   saveStateDebounced();
@@ -352,6 +402,87 @@ function getNetRects(){
   const top   = { x: ox, y: oy - F.top.h, w: F.top.w, h: F.top.h };
   const bottom= { x: ox, y: oy + F.front.h, w: F.bottom.w, h: F.bottom.h };
   return { front, back, left, right, top, bottom };
+}
+
+function drawFaceGuides(ctx, x, y, w, h){
+  const base = Math.max(6, Math.min(w, h));
+  const safe = Math.round(base * 0.08);
+  const bleed = Math.round(base * 0.04);
+
+  ctx.save();
+  ctx.lineWidth = 1.5;
+
+  // Bleed (outside)
+  ctx.setLineDash([6, 4]);
+  ctx.strokeStyle = 'rgba(255,92,122,0.85)';
+  ctx.strokeRect(x - bleed, y - bleed, w + bleed * 2, h + bleed * 2);
+
+  // Safe (inside)
+  ctx.strokeStyle = 'rgba(80,220,160,0.85)';
+  ctx.strokeRect(x + safe, y + safe, w - safe * 2, h - safe * 2);
+
+  // Cut
+  ctx.setLineDash([3, 3]);
+  ctx.strokeStyle = 'rgba(255,255,255,0.25)';
+  ctx.strokeRect(x + 0.5, y + 0.5, w - 1, h - 1);
+
+  ctx.restore();
+}
+
+function drawSelectedImageBounds(ctx, face, x, y, w, h, netScale){
+  const fs = state.faces[face];
+  if (!fs?.imageDataUrl) return;
+  const img = imageCache.get(fs.imageDataUrl);
+  if (!img) return;
+
+  const cx = x + fs.x * netScale;
+  const cy = y + fs.y * netScale;
+  const hw = (img.width * fs.scale * netScale) / 2;
+  const hh = (img.height * fs.scale * netScale) / 2;
+
+  const rad = (fs.rotDeg * Math.PI) / 180;
+  const cos = Math.cos(rad);
+  const sin = Math.sin(rad);
+
+  const pts = [
+    [-hw, -hh],
+    [ hw, -hh],
+    [ hw,  hh],
+    [-hw,  hh]
+  ].map((p) => {
+    const px = p[0] * cos - p[1] * sin;
+    const py = p[0] * sin + p[1] * cos;
+    return [cx + px, cy + py];
+  });
+
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(x, y, w, h);
+  ctx.clip();
+
+  ctx.lineWidth = 2;
+  ctx.setLineDash([8, 6]);
+  ctx.strokeStyle = 'rgba(255,230,120,0.95)';
+  ctx.beginPath();
+  ctx.moveTo(pts[0][0], pts[0][1]);
+  for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i][0], pts[i][1]);
+  ctx.closePath();
+  ctx.stroke();
+
+  // Handles (visual only)
+  ctx.setLineDash([]);
+  const hs = 6;
+  ctx.fillStyle = 'rgba(255,255,255,0.92)';
+  ctx.strokeStyle = 'rgba(0,0,0,0.35)';
+  ctx.lineWidth = 1;
+  for (const [px, py] of pts){
+    ctx.beginPath();
+    ctx.rect(px - hs/2, py - hs/2, hs, hs);
+    ctx.fill();
+    ctx.stroke();
+  }
+
+  ctx.restore();
 }
 
 function drawNet(){
@@ -405,8 +536,16 @@ function drawNet(){
     const fc = faceCanvases[face];
     nctx.drawImage(fc, x, y, w, h);
 
-    // Border
+    if (state.ui?.showGuides !== false){
+      drawFaceGuides(nctx, x, y, w, h);
+    }
+
     const selected = face === state.selectedFace;
+    if (selected){
+      drawSelectedImageBounds(nctx, face, x, y, w, h, scale);
+    }
+
+    // Border
     nctx.lineWidth = selected ? 3 : 2;
     nctx.strokeStyle = selected ? 'rgba(122,162,255,0.95)' : 'rgba(255,255,255,0.22)';
     nctx.strokeRect(x, y, w, h);
@@ -523,6 +662,57 @@ async function renderAll(){
   drawNet();
 }
 
+// --- Keyboard shortcuts (ignored while typing) ---
+function isTypingTarget(el){
+  if (!el) return false;
+  if (el.isContentEditable) return true;
+  const tag = el.tagName;
+  return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT';
+}
+
+window.addEventListener('keydown', (e) => {
+  if (e.defaultPrevented) return;
+  if (e.ctrlKey || e.metaKey || e.altKey) return;
+  if (isTypingTarget(e.target)) return;
+
+  const fs = state.faces[state.selectedFace];
+
+  if (e.key === 'g' || e.key === 'G'){
+    state.ui.showGuides = !(state.ui?.showGuides !== false);
+    syncUiControlsFromState();
+    drawNet();
+    saveStateDebounced();
+    e.preventDefault();
+    return;
+  }
+
+  if (e.key === 'r' || e.key === 'R'){
+    fs.rotDeg += e.shiftKey ? -15 : 15;
+    syncControlsFromState();
+    renderAll();
+    saveStateDebounced();
+    e.preventDefault();
+    return;
+  }
+
+  if (e.key === '0'){
+    fs.scale = 1;
+    syncControlsFromState();
+    renderAll();
+    saveStateDebounced();
+    e.preventDefault();
+    return;
+  }
+
+  if (e.key === 'Delete' || e.key === 'Backspace'){
+    fs.imageDataUrl = null;
+    renderAll();
+    saveStateDebounced();
+    e.preventDefault();
+    return;
+  }
+}, { capture: true });
+
 // --- Interaction: 2D drag / wheel ---
 let dragging = false;
 let dragStart = null;
@@ -621,7 +811,9 @@ viewport.addEventListener('pointerup', () => {
 
 // Initial UI sync
 faceSelect.value = state.selectedFace;
+ensureCanvasTools();
 syncControlsFromState();
+syncUiControlsFromState();
 
 // Render
 renderAll();

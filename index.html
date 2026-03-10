@@ -23,16 +23,15 @@
   <main class="layout">
     <section class="panel">
       <h2>面板</h2>
+
+      <div class="field">
+        <label>模板</label>
+        <select id="templateSelect"></select>
+      </div>
+
       <div class="field">
         <label>選取面</label>
-        <select id="faceSelect">
-          <option value="front">Front 正面</option>
-          <option value="back">Back 背面</option>
-          <option value="left">Left 左側</option>
-          <option value="right">Right 右側</option>
-          <option value="top">Top 上蓋</option>
-          <option value="bottom">Bottom 底部</option>
-        </select>
+        <select id="faceSelect"></select>
       </div>
 
       <div class="field">
@@ -68,8 +67,8 @@
       <details class="field">
         <summary>說明</summary>
         <ul class="muted">
-          <li>這是盒型（簡化）模板：展開圖為十字形。</li>
-          <li>匯出 JSON 會包含圖片 dataURL；檔案可能較大。</li>
+          <li>可切換模板：盒型（carton）、立體袋（pouch）、罐身貼標（cylinder label）。</li>
+          <li>匯出 JSON 會包含模板與各模板的狀態（含圖片 dataURL）；檔案可能較大。</li>
           <li>localStorage 有容量限制，若圖片太大可能存不下。</li>
         </ul>
       </details>
@@ -89,7 +88,7 @@
         <div class="muted">拖曳旋轉視角</div>
       </div>
 
-      <div class="previewTools" aria-label="3D controls">
+      <div class="previewTools" id="previewTools" aria-label="3D controls">
         <label class="rangeRow" for="depthRange">
           <span class="muted">Depth</span>
           <input id="depthRange" type="range" min="0.4" max="2" step="0.05" />
@@ -98,14 +97,7 @@
       </div>
 
       <div class="viewport" id="viewport">
-        <div class="box" id="box">
-          <div class="face face-front" data-face="front"></div>
-          <div class="face face-back" data-face="back"></div>
-          <div class="face face-left" data-face="left"></div>
-          <div class="face face-right" data-face="right"></div>
-          <div class="face face-top" data-face="top"></div>
-          <div class="face face-bottom" data-face="bottom"></div>
-        </div>
+        <div class="box" id="previewObject"></div>
       </div>
     </section>
   </main>
